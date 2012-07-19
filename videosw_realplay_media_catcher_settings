@@ -1,0 +1,3 @@
+c:\Perl\bin\perl.exe
+
+videosw_editor.pl "VIDEO_app: {app}" "VIDEO_playPath: {playPath}" "VIDEO_flashVer: {flashVer}" "VIDEO_url: {url}" "VIDEO_file: {file}" "VIDEO_swfUrl: {swfUrl}"  "VIDEO_pageUrl: {pageUrl}" "VIDEO_tcUrl: {tcUrl}"
