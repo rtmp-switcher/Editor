@@ -1,0 +1,22 @@
+# Config file Video Switcher editor PC script
+
+## directory with channels files
+CHANNELS_DIR="c:/videosw/channels/";
+
+## Logging directory
+LOG_DIR="c:/videosw/log/";
+
+## Permitted RTMP sources
+permitted_url="ustream\.tv|youtube\.com";
+
+## Video Switcher server
+server_vsw="10.20.30.40:443";
+
+## Video editor login parameters
+server_vsw_realm="Test";
+server_vsw_user="testuser";
+server_vsw_password="testpassword";
+
+## PHP scripts URL for get and put channels data to/from Video Switcher
+GET_CHANNEL_URL="https://10.20.30.40/video_switcher/control.php?getChannels";
+POST_CHANNEL_URL="https://10.20.30.40/video_switcher/control.php";

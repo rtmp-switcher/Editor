@@ -1,4 +1,14 @@
-#!/usr/bin/perl
+#!c:\Perl\bin\perl.exe
+
+
+##
+## Video Switcher editor PC script
+##
+## Copyright Oleg Gavrikov <oleg.gavrikov@gmail.com>.  GPL.
+##
+
+
+##Include standart Perl library
 use strict;
 use IO::File;
 use Time::Local;
@@ -6,34 +16,35 @@ use LWP;
 use Data::Dumper;
 use Mozilla::CA;
 use JSON;
+use POSIX;
 
-### Configuration parameters #####################################################
-my $CHANNELS_DIR="c:/videosw/channels/";
-my $LOG_DIR="c:/videosw/log/";
-my $permitted_url="ustream\.tv|youtube\.com";
-my $server_vsw="1.2.3.4:443";
-my $server_vsw_realm="VideoSwitcher";
-my $server_vsw_user="";
-my $server_vsw_password="";
-my $GET_CHANNEL_URL="https://1.2.3.4/video_switcher/control.php?getChannels";
-my $POST_CHANNEL_URL="https://1.2.3.4/video_switcher/control.php";
+## Include common VideoSwitch library
+use videosw;
 
 ### Don't edit after this line ###################################################
 
 ### Global VARs ##################################################################
 my $browser;
 
+## read configuration parameters from file
+my %global_cfg=();
+parse_config(\%global_cfg);
+
+
 ### Subs #########################################################################
 
 sub my_time ()
 {
  my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) =  localtime(time);
- my $time = sprintf "%4d-%02d-%02d_%02d_%02d_%02d", $year+1900,$mon+1,$mday,$hour,$min,$sec;
-
- # my $time_in_sec = timegm ($sec, $min,$hour, $mday, $mon, $year);
-
- return $time;
+ return sprintf "%4d-%02d-%02d_%02d_%02d_%02d", $year+1900,$mon+1,$mday,$hour,$min,$sec;
 }
+
+sub my_time_short ()
+{
+ my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) =  localtime(time);
+ return sprintf "%4d-%02d-%02d_%02d", $year+1900,$mon+1,$mday,$hour;
+}
+
 
 sub url_trans ($)
 { my $url=shift @_;
@@ -49,28 +60,6 @@ sub url_trans ($)
 
 #--------------------------------
 
-sub logg ($)
-{ 
- my $str = shift @_;
-
- ## determine local time
- my $time = my_time;
- my $time_short = $time;
- $time_short =~ s/_\d+_\d+$//;
-
- ## determine local file name for video parameters
- my $log_file="$LOG_DIR/videosw_$time_short.log";
-
- open (FH, ">> $log_file") || die "can't write log file: $log_file with error: $!";
-
- print FH "$time:\t $str\n";
-
- close FH;
-
-}
-
-#--------------------------------
-
 sub connect_to_video_server ($) 
 { my $browser = shift @_;
 
@@ -80,11 +69,11 @@ sub connect_to_video_server ($)
  $$browser->agent('Mozilla');
 
  $$browser->credentials(
-   $server_vsw,
-   $server_vsw_realm,
-   $server_vsw_user => $server_vsw_password
+   $global_cfg{server_vsw},
+   $global_cfg{server_vsw_realm},
+   $global_cfg{server_vsw_user} => $global_cfg{server_vsw_password}
  );
-logg "Start connect to: $server_vsw";
+_log "Start connect to: $global_cfg{server_vsw}";
 return;
 }
 
@@ -97,10 +86,12 @@ sub write_to_file ($)
  my $time = my_time;
 
  ## determine local file name for video parameters
- my $input_file="$CHANNELS_DIR/videosw_channel_".$$ch_parameters{channel};
+ my $input_file="$global_cfg{channels_dir}/videosw_channel_".$$ch_parameters{channel};
+
+ _log "Open file:$input_file for write";
 
  ## open file for write video parameters
- open (FH, "> $input_file") || die "can't write input file: $input_file with error: $!";
+ open (FH, "> $input_file") || log_die "can't write input file: $input_file with error: $!";
 
  ## write file to IN directory
  print FH "$time : ";
@@ -115,14 +106,14 @@ sub get_from_vsw_server ($$)
 {
  my ($channels, $bw) =  @_;
 
- my $response = $$bw->get($GET_CHANNEL_URL);
- logg "Get from video server URL: $GET_CHANNEL_URL";
+ my $response = $$bw->get($global_cfg{get_channel_url});
+ _log "Get from video server URL: $global_cfg{get_channel_url}";
 
  ## Reformat JSON from server
  my $str=$response->content;
 
 
- logg "String from video server: $str";
+ _log "String from video server: $str";
  #$str='['.$str.']';
  #$str=~s/}\s*{/}\,{/ig;
 
@@ -139,8 +130,8 @@ sub send_to_vsw_server ($$)
 {  my ($ch_parameters, $bw) =  @_;
   
    my $str=to_json($ch_parameters);
-   my  $document = $$bw->post($POST_CHANNEL_URL, { dataType=> 'channelDetails', data => $str });
-   logg "Send to video server: $str";
+   my  $document = $$bw->post($global_cfg{post_channel_url}, { dataType=> 'channelDetails', data => $str });
+   _log "Send to video server: $str";
 
    return;
 }  
@@ -150,7 +141,7 @@ sub read_channels_from_files ($)
 { my $channels= shift @_;
 
   ## read dir with channels file
-  opendir ( DIR, $CHANNELS_DIR );
+  opendir ( DIR, $global_cfg{channels_dir} );
   my @ch_files= readdir(DIR); 
 
   ## process channels file
@@ -158,7 +149,7 @@ sub read_channels_from_files ($)
 
     ## determine file name
     if ( $file =~ /^videosw_channel_\d+$/ ) {
-      open (FH, "<$CHANNELS_DIR/$file");
+      open (FH, "<$global_cfg{channels_dir}/$file");
       my $str=<FH>;
 
       ## determine file format
@@ -172,7 +163,7 @@ sub read_channels_from_files ($)
            $$channels { $$channel{channel} } = $channel;
 
       } else {
-           logg ("Can't find valid channel config in: $file");
+           _log ("Can't find valid channel config in: $file");
       }## end if
 
     }## end if 
@@ -182,12 +173,13 @@ sub read_channels_from_files ($)
 }
 
 
-
-
 ### Main ########################################################################
 
 ## initialize video parameters hash
 my %ch_parameters;
+
+## init log file
+initLogFile ( $global_cfg{log_dir}."\videosw_editor_".my_time_short.".log" );
 
 ## process command line arguments
 foreach my $command_element (@ARGV) {
@@ -202,8 +194,8 @@ foreach my $command_element (@ARGV) {
      next if ($key =~ /^file$/);
 
      ## skip not permitted url
-     if ($key =~ /^pageurl$/i && $val !~ /(^|\/|\.)($permitted_url)(\/|$)/i) {
-        logg ("Not permitted $key: $val. Exit.");
+     if ($key =~ /^pageurl$/i && $val !~ /(^|\/|\.)($global_cfg{permitted_url})(\/|$)/i) {
+        log_die ("Not permitted $key: $val. Exit.");
         exit; 
      } else {
         $val=url_trans($val);
@@ -218,13 +210,40 @@ foreach my $command_element (@ARGV) {
 }## end foreach
 
 my $a=to_json(\%ch_parameters);
-logg "-- Start -------------------------------";
-logg ("Read from NET card: $a");
+_log "-- Start -------------------------------";
+_log ("Read from NET card: $a");
 
-## process channels from local files
+## process channels from files
+my %channels_from_files=();
+read_channels_from_files (\%channels_from_files);
 
-my %channels_from_file=();
-read_channels_from_files (\%channels_from_file);
+my $is_file_rtmp_url_changed=1;
+
+foreach my $ch_from_file ( keys %channels_from_files ) {
+
+   ## we need channels with known URL
+   if ( $ch_parameters{pageurl} eq $channels_from_files{$ch_from_file}{pageurl} ) {
+
+     if ( ( $ch_parameters{url} eq $channels_from_files{$ch_from_file}{url} ) && $ch_parameters{url} !~ /^$/ ) {
+
+          _log ("Channel number $ch_from_file RTMP url unchanged in file"); 
+
+          #reset flag
+          $is_file_rtmp_url_changed=0;
+
+     } else {
+      
+          ## determine channel number from file
+          $ch_parameters{channel} = $channels_from_files{$ch_from_file}{channel};
+
+          ## write channel status to file
+          write_to_file (\%ch_parameters);
+          _log ("Channel number $ch_from_file change RTMP URL to $channels_from_files{$ch_from_file}{url}");
+
+     }## end if
+   }## end if
+ 
+}## end foreach
 
 ## connect to video switcher
 my $bw;
@@ -234,27 +253,42 @@ connect_to_video_server (\$bw);
 my $channels;
 get_from_vsw_server (\$channels,\$bw);
 
+my $is_channel_on_server=0;
+
 ## process hash with channels URL from video_server
 foreach my $ch_from_server (@$channels) {
-   print "---";
-   ## update channel URL
+
+   ## determine channel number
    if ( url_trans( $ch_from_server->{uri} ) eq $ch_parameters{pageurl} ) {
 
        ## write to log if channel is correct and server know it
-       logg ( 'Editor PC find channel '. $ch_from_server->{id} .' URL '.$ch_parameters{pageurl});   
+       _log ( 'Editor PC find on VideoSwitch Server channel '. $ch_from_server->{id} .' URL '.$ch_parameters{pageurl});   
 
        ## set channel id
        $ch_parameters{channel} = $ch_from_server->{id} ;
 
-       ## write channel status to file
-       write_to_file (\%ch_parameters);
-       
-       ## write to video server
-       send_to_vsw_server (\%ch_parameters, \$bw);  
+       $is_channel_on_server=1;
 
-   }## end if
+       ## compare server RTMP URL and URL from RMC                           
+       if ( url_trans( $ch_from_server->{last_url} ) ne $ch_parameters{url} ) {
    
+         ## write to video server
+         send_to_vsw_server (\%ch_parameters, \$bw);  
+
+         ## write channel status to file
+         write_to_file (\%ch_parameters);
+        
+       } else {
+        
+         _log ('On VideoSwitcher server same RTMP url for channel number:'. $ch_from_server->{id});
+
+       }## end if
+
+   } ## end if
+  
 }##end foreach
-logg "-- Stop --------------------------------";
+
+_log ( "$ch_parameters{pageurl} not on VideoSwitcher server $global_cfg{server_vsw}") if ($is_channel_on_server == 0);
+_log "-- Stop --------------------------------";
 
 exit;
